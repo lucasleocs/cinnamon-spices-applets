@@ -220,11 +220,8 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 const relevantChange = changedProperties.some(name => DEVICE_STATE_PROPERTIES.has(name)) ||
                     (invalidated || []).some(name => DEVICE_STATE_PROPERTIES.has(name));
 
-                if (!relevantChange)
-                    return;
-
-                this._writeFailed = false;
-                this._refreshState();
+                if (relevantChange)
+                    this._refreshState();
             });
             this._devices.set(path, { proxy, signalId });
             this._writeFailed = false;
