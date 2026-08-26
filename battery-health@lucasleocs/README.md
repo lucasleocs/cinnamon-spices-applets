@@ -5,7 +5,7 @@ Battery Health adds a simple battery-preservation control to the Cinnamon panel 
 On supported systems, the applet offers two choices:
 
 - **Maximize charge (100%)** — allow the battery to charge normally.
-- **Preserve battery health** — use the preservation limits reported by the system to reduce time spent at full charge. When UPower provides a reliable end threshold, the applet shows it directly, for example **Preserve battery health (80%)**.
+- **Preserve battery health** — enable the preservation mode reported by the system. When UPower provides a reliable end threshold, the applet shows it directly, for example **Preserve battery health (80%)**.
 
 When the system also reports a charging start threshold, Battery Health explains the full range, such as “Charging starts below 75% and stops at 80%.” If the limits are managed by firmware instead, the applet says so rather than inventing a percentage.
 
@@ -25,9 +25,19 @@ Support still depends on the laptop's kernel driver and firmware. If the system 
 
 Battery Health is a Cinnamon applet, not a Linux Mint-only application. It may also work on other Linux distributions running Cinnamon when their UPower version, kernel driver, and firmware provide the standardized charge-threshold interface.
 
+## Why doesn't Preserve always show a percentage?
+
+Some systems expose an explicit numeric charge-end threshold. When that value is available through UPower, Battery Health can show it directly, for example **Preserve battery health (80%)**.
+
+Other systems provide firmware-controlled battery preservation without exposing a numeric limit to desktop applications. In that case, Battery Health shows **Preserve battery health** without a percentage and explains that the charging limits are managed by system firmware.
+
+Battery Health does not guess a percentage. It only displays numeric limits that the system explicitly reports as supported.
+
 ## Can I choose a different percentage?
 
 Not currently. The standardized UPower API used by Battery Health exposes the preservation thresholds configured for the system and provides a way to enable or disable them, but it does not currently provide a standardized method for desktop applications to choose arbitrary start or end percentages.
+
+For example, if a system reports an 80% preservation limit, Battery Health can show and enable that 80% mode, but it cannot safely replace it with 70% or 90% through the current standardized API.
 
 Battery Health deliberately does not bypass UPower or write custom values directly to `/sys`. If UPower gains a standardized API for configurable thresholds in the future, custom percentages can be added without introducing manufacturer-specific or privileged code into the applet.
 
@@ -48,5 +58,9 @@ The applet treats UPower's capability flags as authoritative when displaying thr
 ## Development status
 
 This is currently a proof of concept. The backend supports multiple system batteries, ignores peripheral batteries, follows device add/remove events and UPower restarts, and treats UPower's reported state as the source of truth.
+
+The applet has been exercised in Cinnamon with simulated modern UPower devices covering end-threshold-only, start-and-end, firmware-controlled, and mixed multi-battery configurations. Enable/disable calls, state updates, and selective writes to only the batteries that need changing have also been verified in those simulated scenarios.
+
+Linux Mint 22 / Cinnamon 6.6 compatibility has been checked separately: the applet loads safely on the older UPower stack and leaves charging controls unavailable rather than bypassing the system service.
 
 Real-hardware testing with UPower 1.91.2/1.91.3, final UI review, and packaging assets are still pending before any Cinnamon Spices submission.
