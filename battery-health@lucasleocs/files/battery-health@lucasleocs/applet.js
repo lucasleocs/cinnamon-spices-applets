@@ -73,6 +73,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
     constructor(metadata, orientation, panelHeight, instanceId) {
         super(orientation, panelHeight, instanceId);
 
+        this.setAllowedLayout(Applet.AllowedLayout.BOTH);
         this.metadata = metadata;
         this._destroyed = false;
         this._rootProxy = null;
@@ -80,6 +81,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._devices = new Map();
         this._pendingDeviceTokens = new Map();
         this._writeInProgress = false;
+        // Async callbacks from a previous UPower owner must never update current state.
         this._upowerGeneration = 0;
 
         this.set_applet_icon_symbolic_name("battery-good-symbolic");
@@ -183,6 +185,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
             this._devices.has(path) || this._pendingDeviceTokens.has(path))
             return;
 
+        // The same object path can disappear and be re-added while this proxy is loading.
         const requestToken = {};
         this._pendingDeviceTokens.set(path, requestToken);
 
@@ -235,6 +238,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         if (this._destroyed || this._writeInProgress)
             return;
 
+        // Re-check each path before its turn so removed or changed devices are skipped.
         const supportedPaths = Array.from(this._devices.entries())
             .filter(([_path, item]) => isChargeThresholdBattery(item.proxy))
             .map(([path]) => path);
@@ -252,6 +256,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         let index = 0;
         let failed = false;
 
+        // Keep privileged UPower operations sequential rather than overlapping prompts/calls.
         const writeNext = () => {
             if (this._destroyed || generation !== this._upowerGeneration)
                 return;
