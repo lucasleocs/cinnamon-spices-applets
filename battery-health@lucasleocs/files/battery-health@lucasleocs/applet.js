@@ -249,12 +249,15 @@ class BatteryHealthApplet extends Applet.IconApplet {
         if (this._destroyed || this._writeInProgress)
             return;
 
-        // Re-check each path before its turn so removed or changed devices are skipped.
+        // Only write batteries that still need to reach the requested mode.
         const supportedPaths = Array.from(this._devices.entries())
-            .filter(([_path, item]) => isChargeThresholdBattery(item.proxy))
+            .filter(([_path, item]) =>
+                isChargeThresholdBattery(item.proxy) &&
+                item.proxy.ChargeThresholdEnabled !== enabled)
             .map(([path]) => path);
 
         if (supportedPaths.length === 0) {
+            this._writeFailed = false;
             this._refreshState();
             return;
         }
@@ -279,7 +282,8 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 const path = supportedPaths[index++];
                 const item = this._devices.get(path);
 
-                if (!item || !isChargeThresholdBattery(item.proxy))
+                if (!item || !isChargeThresholdBattery(item.proxy) ||
+                    item.proxy.ChargeThresholdEnabled === enabled)
                     continue;
 
                 item.proxy.EnableChargeThresholdRemote(enabled, (_result, error) => {
