@@ -81,6 +81,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._devices = new Map();
         this._pendingDeviceTokens = new Map();
         this._writeInProgress = false;
+        this._writeFailed = false;
         // Async callbacks from a previous UPower owner must never update current state.
         this._upowerGeneration = 0;
 
@@ -97,14 +98,17 @@ class BatteryHealthApplet extends Applet.IconApplet {
         );
         this.menu.addMenuItem(this._statusItem);
 
-        this._toggleItem = new PopupMenu.PopupSwitchMenuItem(
-            _("Preserve battery health"),
-            false
-        );
-        this._toggleItem.actor.hide();
-        this._toggleItem.setSensitive(false);
-        this._toggleItem.connect("toggled", item => this._setChargeThresholdEnabled(item.state));
-        this.menu.addMenuItem(this._toggleItem);
+        this._maximizeItem = new PopupMenu.PopupMenuItem(_("Maximize charge"));
+        this._maximizeItem.actor.hide();
+        this._maximizeItem.setSensitive(false);
+        this._maximizeItem.connect("activate", () => this._setChargeThresholdEnabled(false));
+        this.menu.addMenuItem(this._maximizeItem);
+
+        this._preserveItem = new PopupMenu.PopupMenuItem(_("Preserve battery health"));
+        this._preserveItem.actor.hide();
+        this._preserveItem.setSensitive(false);
+        this._preserveItem.connect("activate", () => this._setChargeThresholdEnabled(true));
+        this.menu.addMenuItem(this._preserveItem);
 
         this._upowerWatchId = Gio.bus_watch_name(
             Gio.BusType.SYSTEM,
@@ -134,6 +138,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
             this._disconnectRootProxy();
             this._clearDevices();
             this._writeInProgress = false;
+            this._writeFailed = false;
             this._rootProxy = proxy;
 
             this._rootSignalIds.push(proxy.connectSignal(
@@ -155,6 +160,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
 
         this._upowerGeneration++;
         this._writeInProgress = false;
+        this._writeFailed = false;
         this._disconnectRootProxy();
         this._clearDevices();
         this._setState("unavailable");
@@ -202,8 +208,12 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 return;
             }
 
-            const signalId = proxy.connect("g-properties-changed", () => this._refreshState());
+            const signalId = proxy.connect("g-properties-changed", () => {
+                this._writeFailed = false;
+                this._refreshState();
+            });
             this._devices.set(path, { proxy, signalId });
+            this._writeFailed = false;
             this._refreshState();
         });
     }
@@ -221,6 +231,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
             this._devices.delete(path);
         }
 
+        this._writeFailed = false;
         this._refreshState();
     }
 
@@ -249,8 +260,11 @@ class BatteryHealthApplet extends Applet.IconApplet {
         }
 
         this._writeInProgress = true;
-        this._toggleItem.setStatus(_("Updating..."));
-        this._toggleItem.setSensitive(false);
+        this._writeFailed = false;
+        this._maximizeItem.setSensitive(false);
+        this._preserveItem.setSensitive(false);
+        this._statusItem.label.set_text(_("Updating battery charging mode..."));
+        this.set_applet_tooltip(_("Updating battery charging mode"));
 
         const generation = this._upowerGeneration;
         let index = 0;
@@ -283,25 +297,39 @@ class BatteryHealthApplet extends Applet.IconApplet {
             }
 
             this._writeInProgress = false;
-            this._toggleItem.setStatus(failed ? _("Failed") : null);
+            this._writeFailed = failed;
             this._refreshState();
         };
 
         writeNext();
     }
 
-    _setState(state) {
+    _updateModeItems(state) {
         const supportedState = state === "enabled" || state === "disabled" || state === "mixed";
 
-        if (supportedState) {
-            if (!this._writeInProgress)
-                this._toggleItem.setToggleState(state === "enabled");
-            this._toggleItem.setSensitive(!this._writeInProgress);
-            this._toggleItem.actor.show();
-        } else {
-            this._toggleItem.setStatus(null);
-            this._toggleItem.setSensitive(false);
-            this._toggleItem.actor.hide();
+        if (!supportedState) {
+            this._maximizeItem.setSensitive(false);
+            this._preserveItem.setSensitive(false);
+            this._maximizeItem.actor.hide();
+            this._preserveItem.actor.hide();
+            return;
+        }
+
+        this._maximizeItem.setOrnament(PopupMenu.OrnamentType.DOT, state === "disabled");
+        this._preserveItem.setOrnament(PopupMenu.OrnamentType.DOT, state === "enabled");
+        this._maximizeItem.setSensitive(!this._writeInProgress);
+        this._preserveItem.setSensitive(!this._writeInProgress);
+        this._maximizeItem.actor.show();
+        this._preserveItem.actor.show();
+    }
+
+    _setState(state) {
+        this._updateModeItems(state);
+
+        if (this._writeInProgress) {
+            this._statusItem.label.set_text(_("Updating battery charging mode..."));
+            this.set_applet_tooltip(_("Updating battery charging mode"));
+            return;
         }
 
         switch (state) {
@@ -330,6 +358,9 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 this.set_applet_tooltip(_("Battery health charging unavailable"));
                 break;
         }
+
+        if (this._writeFailed && (state === "enabled" || state === "disabled" || state === "mixed"))
+            this._statusItem.label.set_text(_("Could not update all batteries."));
     }
 
     _disconnectRootProxy() {
