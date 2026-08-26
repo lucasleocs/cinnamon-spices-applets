@@ -16,4 +16,5 @@ This is still a development version. Packaging assets, broader real-hardware tes
 
 - Cinnamon
 - UPower with the charge-threshold D-Bus API (introduced in UPower 1.90.5 or provided as a backport)
+- Systems that expose only `charge_control_end_threshold` require UPower 1.91.2 or newer for correct support detection
 - A Linux kernel driver/firmware combination that exposes battery charge-threshold support to UPower
