@@ -301,6 +301,12 @@ class BatteryHealthApplet extends Applet.IconApplet {
                     if (this._destroyed || generation !== this._upowerGeneration)
                         return;
 
+                    // A removed/re-added object path may now refer to another device proxy.
+                    if (this._devices.get(path) !== item) {
+                        writeNext();
+                        return;
+                    }
+
                     if (error) {
                         failed = true;
                         global.logError(`${UUID}: failed to change battery charge threshold for ${path}: ${error.message}`);
