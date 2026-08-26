@@ -389,8 +389,8 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 this.set_applet_tooltip(_("Mixed battery charging modes"));
                 break;
             case "api-unavailable":
-                this._statusItem.label.set_text(_("Battery charge limiting requires a newer version of UPower."));
-                this.set_applet_tooltip(_("Battery charge limiting is unavailable in this UPower version"));
+                this._statusItem.label.set_text(_("On Linux Mint, this feature requires Linux Mint 23 or newer."));
+                this.set_applet_tooltip(_("On Linux Mint, battery health charging requires Mint 23 or newer"));
                 break;
             case "unsupported":
                 this._statusItem.label.set_text(_("Battery charge limiting is not supported by this system."));
