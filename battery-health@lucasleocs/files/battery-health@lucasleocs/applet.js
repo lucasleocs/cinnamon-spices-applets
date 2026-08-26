@@ -2,19 +2,29 @@ const Applet = imports.ui.applet;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const Gettext = imports.gettext;
+const St = imports.gi.St;
 const UPowerGlib = imports.gi.UPowerGlib;
+const Extension = imports.ui.extension;
 const PopupMenu = imports.ui.popupMenu;
 
 const UUID = "battery-health@lucasleocs";
 const UPOWER_BUS_NAME = "org.freedesktop.UPower";
 const UPOWER_OBJECT_PATH = "/org/freedesktop/UPower";
 const { DeviceKind: UPDeviceKind } = UPowerGlib;
+
+const CHARGE_THRESHOLD_START = 1;
+const CHARGE_THRESHOLD_END = 2;
+const CHARGE_THRESHOLD_FIRMWARE = 4;
+
 const DEVICE_STATE_PROPERTIES = new Set([
     "Type",
     "PowerSupply",
     "IsPresent",
     "ChargeThresholdEnabled",
     "ChargeThresholdSupported",
+    "ChargeStartThreshold",
+    "ChargeEndThreshold",
+    "ChargeThresholdSettingsSupported",
 ]);
 
 Gettext.bindtextdomain(UUID, GLib.get_home_dir() + "/.local/share/locale");
@@ -47,6 +57,9 @@ const UPowerDeviceInterface = `<node>
     <property name="IsPresent" type="b" access="read" />
     <property name="ChargeThresholdEnabled" type="b" access="read" />
     <property name="ChargeThresholdSupported" type="b" access="read" />
+    <property name="ChargeStartThreshold" type="u" access="read" />
+    <property name="ChargeEndThreshold" type="u" access="read" />
+    <property name="ChargeThresholdSettingsSupported" type="u" access="read" />
   </interface>
 </node>`;
 
@@ -86,6 +99,70 @@ function getThresholdState(devices) {
     return "mixed";
 }
 
+function validThreshold(value) {
+    return Number.isInteger(value) && value >= 0 && value <= 100;
+}
+
+function describeThresholdSettings(device) {
+    const settings = Number.isInteger(device.ChargeThresholdSettingsSupported)
+        ? device.ChargeThresholdSettingsSupported
+        : 0;
+
+    const start = (settings & CHARGE_THRESHOLD_START) !== 0 &&
+        validThreshold(device.ChargeStartThreshold)
+        ? device.ChargeStartThreshold
+        : null;
+    const end = (settings & CHARGE_THRESHOLD_END) !== 0 &&
+        validThreshold(device.ChargeEndThreshold)
+        ? device.ChargeEndThreshold
+        : null;
+
+    return {
+        settings: settings & (
+            CHARGE_THRESHOLD_START |
+            CHARGE_THRESHOLD_END |
+            CHARGE_THRESHOLD_FIRMWARE
+        ),
+        start,
+        end,
+        firmware: (settings & CHARGE_THRESHOLD_FIRMWARE) !== 0,
+    };
+}
+
+function sameThresholdDescriptor(a, b) {
+    return a.settings === b.settings &&
+        a.start === b.start &&
+        a.end === b.end;
+}
+
+function getThresholdDisplay(devices) {
+    if (devices.length === 0)
+        return { preserveEnd: null, infoKind: null, start: null, end: null };
+
+    const descriptors = devices.map(describeThresholdSettings);
+    const endValues = descriptors.map(item => item.end);
+    const firstEnd = endValues[0];
+    const preserveEnd = firstEnd !== null &&
+        endValues.every(value => value === firstEnd)
+        ? firstEnd
+        : null;
+
+    const first = descriptors[0];
+    if (!descriptors.every(item => sameThresholdDescriptor(item, first)))
+        return { preserveEnd, infoKind: "different", start: null, end: null };
+
+    if (first.start !== null && first.end !== null)
+        return { preserveEnd, infoKind: "range", start: first.start, end: first.end };
+    if (first.end !== null)
+        return { preserveEnd, infoKind: "end", start: null, end: first.end };
+    if (first.start !== null)
+        return { preserveEnd, infoKind: "start", start: first.start, end: null };
+    if (first.firmware)
+        return { preserveEnd: null, infoKind: "firmware", start: null, end: null };
+
+    return { preserveEnd: null, infoKind: null, start: null, end: null };
+}
+
 class BatteryHealthApplet extends Applet.IconApplet {
     constructor(metadata, orientation, panelHeight, instanceId) {
         super(orientation, panelHeight, instanceId);
@@ -115,7 +192,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         );
         this.menu.addMenuItem(this._statusItem);
 
-        this._maximizeItem = new PopupMenu.PopupMenuItem(_("Maximize charge"));
+        this._maximizeItem = new PopupMenu.PopupMenuItem(_("Maximize charge (100%)"));
         this._maximizeItem.actor.hide();
         this._maximizeItem.setSensitive(false);
         this._maximizeItem.connect("activate", () => this._setChargeThresholdEnabled(false));
@@ -126,6 +203,18 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._preserveItem.setSensitive(false);
         this._preserveItem.connect("activate", () => this._setChargeThresholdEnabled(true));
         this.menu.addMenuItem(this._preserveItem);
+
+        this._thresholdInfoItem = new PopupMenu.PopupMenuItem("", { reactive: false });
+        this._thresholdInfoItem.actor.hide();
+        this.menu.addMenuItem(this._thresholdInfoItem);
+
+        this._reloadItem = new PopupMenu.PopupIconMenuItem(
+            _("Reload Applet"),
+            "view-refresh-symbolic",
+            St.IconType.SYMBOLIC
+        );
+        this._reloadItem.connect("activate", () => this._reloadApplet());
+        this._applet_context_menu.addMenuItem(this._reloadItem);
 
         this._upowerWatchId = Gio.bus_watch_name(
             Gio.BusType.SYSTEM,
@@ -339,6 +428,56 @@ class BatteryHealthApplet extends Applet.IconApplet {
         writeNext();
     }
 
+    _updateThresholdDetails(state) {
+        const supportedState = state === "enabled" || state === "disabled" || state === "mixed";
+
+        this._maximizeItem.label.set_text(_("Maximize charge (100%)"));
+        this._preserveItem.label.set_text(_("Preserve battery health"));
+
+        if (!supportedState) {
+            this._thresholdInfoItem.actor.hide();
+            return;
+        }
+
+        const supportedDevices = Array.from(this._devices.values(), item => item.proxy)
+            .filter(isChargeThresholdBattery);
+        const display = getThresholdDisplay(supportedDevices);
+
+        if (display.preserveEnd !== null) {
+            this._preserveItem.label.set_text(
+                _("Preserve battery health (%d%%)").format(display.preserveEnd)
+            );
+        }
+
+        let infoText = null;
+        switch (display.infoKind) {
+            case "range":
+                infoText = _("ⓘ Charging starts below %d%% and stops at %d%%.")
+                    .format(display.start, display.end);
+                break;
+            case "end":
+                infoText = _("ⓘ Charging stops at %d%%.").format(display.end);
+                break;
+            case "start":
+                infoText = _("ⓘ Charging starts below %d%%.").format(display.start);
+                break;
+            case "firmware":
+                infoText = _("ⓘ Charging limits are managed by system firmware.");
+                break;
+            case "different":
+                infoText = _("ⓘ Charging limits differ between batteries.");
+                break;
+        }
+
+        if (infoText === null) {
+            this._thresholdInfoItem.actor.hide();
+            return;
+        }
+
+        this._thresholdInfoItem.label.set_text(infoText);
+        this._thresholdInfoItem.actor.show();
+    }
+
     _updateModeItems(state) {
         const supportedState = state === "enabled" || state === "disabled" || state === "mixed";
 
@@ -359,6 +498,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
     }
 
     _setState(state) {
+        this._updateThresholdDetails(state);
         this._updateModeItems(state);
 
         if (this._writeInProgress) {
@@ -389,8 +529,10 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 this.set_applet_tooltip(_("Mixed battery charging modes"));
                 break;
             case "api-unavailable":
-                this._statusItem.label.set_text(_("On Linux Mint, this feature requires Linux Mint 23 or newer."));
-                this.set_applet_tooltip(_("On Linux Mint, battery health charging requires Mint 23 or newer"));
+                this._statusItem.label.set_text(_(
+                    "This feature requires newer system power-management support.\nOn Linux Mint, it is intended for Mint 23 or newer."
+                ));
+                this.set_applet_tooltip(_("Newer system power-management support is required"));
                 break;
             case "unsupported":
                 this._statusItem.label.set_text(_("Battery charge limiting is not supported by this system."));
@@ -405,6 +547,16 @@ class BatteryHealthApplet extends Applet.IconApplet {
         if (this._failedWriteTarget !== null &&
             (state === "enabled" || state === "disabled" || state === "mixed"))
             this._statusItem.label.set_text(_("Could not update all batteries."));
+    }
+
+    _reloadApplet() {
+        this.menu.close();
+
+        try {
+            Extension.reloadExtension(this.metadata.uuid, Extension.Type.APPLET);
+        } catch (error) {
+            global.logError(`${UUID}: failed to reload applet: ${error.message}`);
+        }
     }
 
     _disconnectRootProxy() {
