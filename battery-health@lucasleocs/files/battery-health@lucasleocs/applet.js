@@ -2,13 +2,13 @@ const Applet = imports.ui.applet;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const Gettext = imports.gettext;
-const PowerUtils = imports.misc.powerUtils;
+const UPowerGlib = imports.gi.UPowerGlib;
 const PopupMenu = imports.ui.popupMenu;
 
 const UUID = "battery-health@lucasleocs";
 const UPOWER_BUS_NAME = "org.freedesktop.UPower";
 const UPOWER_OBJECT_PATH = "/org/freedesktop/UPower";
-const { UPDeviceKind } = PowerUtils;
+const { DeviceKind: UPDeviceKind } = UPowerGlib;
 
 Gettext.bindtextdomain(UUID, GLib.get_home_dir() + "/.local/share/locale");
 
