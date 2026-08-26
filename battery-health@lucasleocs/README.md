@@ -6,7 +6,7 @@ The applet does not contain vendor-specific battery logic and does not access sy
 
 ## Current development status
 
-The applet currently discovers supported system batteries, tracks enabled, disabled, mixed, unsupported, and unavailable states, and exposes explicit **Maximize charge** and **Preserve battery health** choices through UPower's `EnableChargeThreshold()` D-Bus method.
+The applet currently discovers supported system batteries, distinguishes an unavailable UPower charge-threshold API from unsupported hardware, tracks enabled, disabled, mixed, unsupported, and unavailable states, and exposes explicit **Maximize charge** and **Preserve battery health** choices through UPower's `EnableChargeThreshold()` D-Bus method.
 
 Multiple supported batteries are handled independently. The applet only writes batteries that need to change to the requested mode, ignores peripheral batteries, and tracks device add/remove events and UPower service restarts so stale callbacks cannot overwrite the current state.
 
