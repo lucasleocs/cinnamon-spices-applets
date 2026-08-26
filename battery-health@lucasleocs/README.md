@@ -6,9 +6,11 @@ The applet does not contain vendor-specific battery logic and does not access sy
 
 ## Current development status
 
-The first development checkpoint is read-only: it discovers supported batteries and reports whether battery health charging is enabled, disabled, mixed across multiple batteries, unsupported, or temporarily unavailable.
+The applet currently discovers supported system batteries, tracks enabled, disabled, mixed, unsupported, and unavailable states, and exposes a **Preserve battery health** switch through UPower's `EnableChargeThreshold()` D-Bus method.
 
-The enable/disable control will be added after the discovery and lifecycle behavior is validated.
+Multiple supported batteries are handled independently. Peripheral batteries are ignored, and the applet tracks device add/remove events and UPower service restarts so stale callbacks cannot overwrite the current state.
+
+This is still a development version. Packaging assets and broader real-hardware testing will be added before submission to Cinnamon Spices.
 
 ## Requirements
 
