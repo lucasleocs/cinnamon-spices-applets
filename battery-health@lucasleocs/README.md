@@ -4,8 +4,10 @@ Battery Health adds a simple battery-preservation control to the Cinnamon panel 
 
 On supported systems, the applet offers two choices:
 
-- **Maximize charge** — allow the battery to charge normally.
-- **Preserve battery health** — use the charging limits provided by the laptop firmware and driver to reduce time spent at full charge.
+- **Maximize charge (100%)** — allow the battery to charge normally.
+- **Preserve battery health** — use the preservation limits reported by the system to reduce time spent at full charge. When UPower provides a reliable end threshold, the applet shows it directly, for example **Preserve battery health (80%)**.
+
+When the system also reports a charging start threshold, Battery Health explains the full range, such as “Charging starts below 75% and stops at 80%.” If the limits are managed by firmware instead, the applet says so rather than inventing a percentage.
 
 The applet does not use manufacturer-specific commands and does not write directly to system power files. It uses the UPower service provided by the operating system.
 
@@ -19,6 +21,16 @@ Linux Mint 22 uses an older UPower release that does not expose the standardized
 
 Support still depends on the laptop's kernel driver and firmware. If the system does not report charge-threshold support, Battery Health leaves the controls unavailable rather than guessing the manufacturer or forcing a hardware-specific method.
 
+## Other Cinnamon distributions
+
+Battery Health is a Cinnamon applet, not a Linux Mint-only application. It may also work on other Linux distributions running Cinnamon when their UPower version, kernel driver, and firmware provide the standardized charge-threshold interface.
+
+## Can I choose a different percentage?
+
+Not currently. The standardized UPower API used by Battery Health exposes the preservation thresholds configured for the system and provides a way to enable or disable them, but it does not currently provide a standardized method for desktop applications to choose arbitrary start or end percentages.
+
+Battery Health deliberately does not bypass UPower or write custom values directly to `/sys`. If UPower gains a standardized API for configurable thresholds in the future, custom percentages can be added without introducing manufacturer-specific or privileged code into the applet.
+
 ## Permissions and safety
 
 Battery Health does not run `sudo`, does not install its own privileged helper, and does not write to `/sys` directly.
@@ -30,6 +42,8 @@ Charging-mode changes are requested through UPower's D-Bus API. UPower and Polki
 The standardized UPower charge-threshold API was introduced in UPower 1.90.5. Systems that expose only `charge_control_end_threshold` need UPower 1.91.2 or newer for correct support detection; UPower 1.91.3 also includes additional charge-threshold detection fixes.
 
 This distinction matters for some real laptops: the kernel may already expose a valid charge limit while an older UPower release cannot yet present it through the standardized desktop API. Battery Health deliberately does not bypass UPower in that situation.
+
+The applet treats UPower's capability flags as authoritative when displaying thresholds. For example, if a laptop supports only an end threshold, Battery Health shows only that end limit even if another numeric value is present in the D-Bus proxy.
 
 ## Development status
 
