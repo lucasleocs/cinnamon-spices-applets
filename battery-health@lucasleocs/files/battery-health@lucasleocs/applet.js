@@ -2,12 +2,13 @@ const Applet = imports.ui.applet;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const Gettext = imports.gettext;
+const PowerUtils = imports.misc.powerUtils;
 const PopupMenu = imports.ui.popupMenu;
 
 const UUID = "battery-health@lucasleocs";
 const UPOWER_BUS_NAME = "org.freedesktop.UPower";
 const UPOWER_OBJECT_PATH = "/org/freedesktop/UPower";
-const UP_DEVICE_KIND_BATTERY = 2;
+const { UPDeviceKind } = PowerUtils;
 
 Gettext.bindtextdomain(UUID, GLib.get_home_dir() + "/.local/share/locale");
 
@@ -31,6 +32,9 @@ const UPowerInterface = `<node>
 
 const UPowerDeviceInterface = `<node>
   <interface name="org.freedesktop.UPower.Device">
+    <method name="EnableChargeThreshold">
+      <arg name="chargeThreshold" type="b" direction="in" />
+    </method>
     <property name="Type" type="u" access="read" />
     <property name="PowerSupply" type="b" access="read" />
     <property name="IsPresent" type="b" access="read" />
@@ -43,7 +47,7 @@ const UPowerProxy = Gio.DBusProxy.makeProxyWrapper(UPowerInterface);
 const UPowerDeviceProxy = Gio.DBusProxy.makeProxyWrapper(UPowerDeviceInterface);
 
 function isChargeThresholdBattery(device) {
-    return device.Type === UP_DEVICE_KIND_BATTERY &&
+    return device.Type === UPDeviceKind.BATTERY &&
         device.PowerSupply === true &&
         device.IsPresent === true &&
         device.ChargeThresholdSupported === true;
@@ -75,6 +79,8 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._rootSignalIds = [];
         this._devices = new Map();
         this._pendingDevicePaths = new Set();
+        this._writeInProgress = false;
+        this._upowerGeneration = 0;
 
         this.set_applet_icon_symbolic_name("battery-good-symbolic");
         this.set_applet_tooltip(_("Checking battery charge limit support"));
@@ -89,6 +95,15 @@ class BatteryHealthApplet extends Applet.IconApplet {
         );
         this.menu.addMenuItem(this._statusItem);
 
+        this._toggleItem = new PopupMenu.PopupSwitchMenuItem(
+            _("Preserve battery health"),
+            false
+        );
+        this._toggleItem.actor.hide();
+        this._toggleItem.setSensitive(false);
+        this._toggleItem.connect("toggled", item => this._setChargeThresholdEnabled(item.state));
+        this.menu.addMenuItem(this._toggleItem);
+
         this._upowerWatchId = Gio.bus_watch_name(
             Gio.BusType.SYSTEM,
             UPOWER_BUS_NAME,
@@ -102,8 +117,10 @@ class BatteryHealthApplet extends Applet.IconApplet {
         if (this._destroyed)
             return;
 
+        const generation = ++this._upowerGeneration;
+
         new UPowerProxy(connection, UPOWER_BUS_NAME, UPOWER_OBJECT_PATH, (proxy, error) => {
-            if (this._destroyed)
+            if (this._destroyed || generation !== this._upowerGeneration)
                 return;
 
             if (error) {
@@ -114,18 +131,19 @@ class BatteryHealthApplet extends Applet.IconApplet {
 
             this._disconnectRootProxy();
             this._clearDevices();
+            this._writeInProgress = false;
             this._rootProxy = proxy;
 
             this._rootSignalIds.push(proxy.connectSignal(
                 "DeviceAdded",
-                (_proxy, _sender, [path]) => this._addDevice(connection, path)
+                (_proxy, _sender, [path]) => this._addDevice(connection, path, generation)
             ));
             this._rootSignalIds.push(proxy.connectSignal(
                 "DeviceRemoved",
-                (_proxy, _sender, [path]) => this._removeDevice(path)
+                (_proxy, _sender, [path]) => this._removeDevice(path, generation)
             ));
 
-            this._enumerateDevices(connection);
+            this._enumerateDevices(connection, generation);
         });
     }
 
@@ -133,14 +151,16 @@ class BatteryHealthApplet extends Applet.IconApplet {
         if (this._destroyed)
             return;
 
+        this._upowerGeneration++;
+        this._writeInProgress = false;
         this._disconnectRootProxy();
         this._clearDevices();
         this._setState("unavailable");
     }
 
-    _enumerateDevices(connection) {
+    _enumerateDevices(connection, generation) {
         this._rootProxy.EnumerateDevicesRemote((result, error) => {
-            if (this._destroyed || this._rootProxy === null)
+            if (this._destroyed || generation !== this._upowerGeneration || this._rootProxy === null)
                 return;
 
             if (error) {
@@ -151,21 +171,23 @@ class BatteryHealthApplet extends Applet.IconApplet {
 
             const paths = result && result[0] ? result[0] : [];
             for (const path of paths)
-                this._addDevice(connection, path);
+                this._addDevice(connection, path, generation);
 
             if (paths.length === 0)
                 this._refreshState();
         });
     }
 
-    _addDevice(connection, path) {
-        if (this._destroyed || this._devices.has(path) || this._pendingDevicePaths.has(path))
+    _addDevice(connection, path, generation) {
+        if (this._destroyed || generation !== this._upowerGeneration ||
+            this._devices.has(path) || this._pendingDevicePaths.has(path))
             return;
 
         this._pendingDevicePaths.add(path);
 
         new UPowerDeviceProxy(connection, UPOWER_BUS_NAME, path, (proxy, error) => {
-            if (this._destroyed || !this._pendingDevicePaths.has(path))
+            if (this._destroyed || generation !== this._upowerGeneration ||
+                !this._pendingDevicePaths.has(path))
                 return;
 
             this._pendingDevicePaths.delete(path);
@@ -182,7 +204,10 @@ class BatteryHealthApplet extends Applet.IconApplet {
         });
     }
 
-    _removeDevice(path) {
+    _removeDevice(path, generation) {
+        if (generation !== this._upowerGeneration)
+            return;
+
         this._pendingDevicePaths.delete(path);
 
         const device = this._devices.get(path);
@@ -205,7 +230,64 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._setState(getThresholdState(devices));
     }
 
+    _setChargeThresholdEnabled(enabled) {
+        if (this._destroyed || this._writeInProgress)
+            return;
+
+        const supported = Array.from(this._devices.entries())
+            .filter(([_path, item]) => isChargeThresholdBattery(item.proxy));
+
+        if (supported.length === 0) {
+            this._refreshState();
+            return;
+        }
+
+        this._writeInProgress = true;
+        this._toggleItem.setSensitive(false);
+
+        const generation = this._upowerGeneration;
+        let remaining = supported.length;
+        let failed = false;
+
+        for (const [path, item] of supported) {
+            item.proxy.EnableChargeThresholdRemote(enabled, (_result, error) => {
+                if (this._destroyed || generation !== this._upowerGeneration)
+                    return;
+
+                if (error) {
+                    failed = true;
+                    global.logError(`${UUID}: failed to change battery charge threshold for ${path}: ${error.message}`);
+                }
+
+                remaining--;
+                if (remaining !== 0 || this._destroyed)
+                    return;
+
+                this._writeInProgress = false;
+                this._refreshState();
+
+                if (failed) {
+                    const stillSupported = Array.from(this._devices.values(), item => item.proxy)
+                        .some(isChargeThresholdBattery);
+                    if (stillSupported)
+                        this._statusItem.label.set_text(_("Could not update all batteries."));
+                }
+            });
+        }
+    }
+
     _setState(state) {
+        const supportedState = state === "enabled" || state === "disabled" || state === "mixed";
+
+        if (supportedState) {
+            this._toggleItem.setToggleState(state === "enabled");
+            this._toggleItem.setSensitive(!this._writeInProgress);
+            this._toggleItem.actor.show();
+        } else {
+            this._toggleItem.setSensitive(false);
+            this._toggleItem.actor.hide();
+        }
+
         switch (state) {
             case "checking":
                 this._statusItem.label.set_text(_("Checking battery charge limit support..."));
