@@ -31,9 +31,6 @@ const UPowerInterface = `<node>
 
 const UPowerDeviceInterface = `<node>
   <interface name="org.freedesktop.UPower.Device">
-    <method name="EnableChargeThreshold">
-      <arg name="chargeThreshold" type="b" direction="in" />
-    </method>
     <property name="Type" type="u" access="read" />
     <property name="PowerSupply" type="b" access="read" />
     <property name="IsPresent" type="b" access="read" />
