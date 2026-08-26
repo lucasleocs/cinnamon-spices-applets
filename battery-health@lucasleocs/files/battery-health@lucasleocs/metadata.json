@@ -1,0 +1,7 @@
+{
+    "description": "Control supported laptop battery health charging through UPower",
+    "uuid": "battery-health@lucasleocs",
+    "name": "Battery Health",
+    "version": "0.1.0",
+    "max-instances": 1
+}
