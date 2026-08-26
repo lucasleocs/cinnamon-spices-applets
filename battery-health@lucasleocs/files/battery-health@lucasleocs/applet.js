@@ -98,7 +98,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._devices = new Map();
         this._pendingDeviceTokens = new Map();
         this._writeInProgress = false;
-        this._writeFailed = false;
+        this._failedWriteTarget = null;
         // Async callbacks from a previous UPower owner must never update current state.
         this._upowerGeneration = 0;
 
@@ -147,7 +147,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._disconnectRootProxy();
         this._clearDevices();
         this._writeInProgress = false;
-        this._writeFailed = false;
+        this._failedWriteTarget = null;
         this._setState("checking");
 
         new UPowerProxy(connection, UPOWER_BUS_NAME, UPOWER_OBJECT_PATH, (proxy, error) => {
@@ -181,7 +181,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
 
         this._upowerGeneration++;
         this._writeInProgress = false;
-        this._writeFailed = false;
+        this._failedWriteTarget = null;
         this._disconnectRootProxy();
         this._clearDevices();
         this._setState("unavailable");
@@ -238,7 +238,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
                     this._refreshState();
             });
             this._devices.set(path, { proxy, signalId });
-            this._writeFailed = false;
+            this._failedWriteTarget = null;
             this._refreshState();
         });
     }
@@ -256,7 +256,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
             this._devices.delete(path);
         }
 
-        this._writeFailed = false;
+        this._failedWriteTarget = null;
         this._refreshState();
     }
 
@@ -282,13 +282,13 @@ class BatteryHealthApplet extends Applet.IconApplet {
             .map(([path]) => path);
 
         if (supportedPaths.length === 0) {
-            this._writeFailed = false;
+            this._failedWriteTarget = null;
             this._refreshState();
             return;
         }
 
         this._writeInProgress = true;
-        this._writeFailed = false;
+        this._failedWriteTarget = null;
         this._maximizeItem.setSensitive(false);
         this._preserveItem.setSensitive(false);
         this._statusItem.label.set_text(_("Updating battery charging mode..."));
@@ -332,7 +332,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
             }
 
             this._writeInProgress = false;
-            this._writeFailed = failed;
+            this._failedWriteTarget = failed ? enabled : null;
             this._refreshState();
         };
 
@@ -367,6 +367,10 @@ class BatteryHealthApplet extends Applet.IconApplet {
             return;
         }
 
+        if ((this._failedWriteTarget === true && state === "enabled") ||
+            (this._failedWriteTarget === false && state === "disabled"))
+            this._failedWriteTarget = null;
+
         switch (state) {
             case "checking":
                 this._statusItem.label.set_text(_("Checking battery charge limit support..."));
@@ -398,7 +402,8 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 break;
         }
 
-        if (this._writeFailed && (state === "enabled" || state === "disabled" || state === "mixed"))
+        if (this._failedWriteTarget !== null &&
+            (state === "enabled" || state === "disabled" || state === "mixed"))
             this._statusItem.label.set_text(_("Could not update all batteries."));
     }
 
