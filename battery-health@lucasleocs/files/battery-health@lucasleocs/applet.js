@@ -78,7 +78,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._rootProxy = null;
         this._rootSignalIds = [];
         this._devices = new Map();
-        this._pendingDevicePaths = new Set();
+        this._pendingDeviceTokens = new Map();
         this._writeInProgress = false;
         this._upowerGeneration = 0;
 
@@ -180,17 +180,18 @@ class BatteryHealthApplet extends Applet.IconApplet {
 
     _addDevice(connection, path, generation) {
         if (this._destroyed || generation !== this._upowerGeneration ||
-            this._devices.has(path) || this._pendingDevicePaths.has(path))
+            this._devices.has(path) || this._pendingDeviceTokens.has(path))
             return;
 
-        this._pendingDevicePaths.add(path);
+        const requestToken = {};
+        this._pendingDeviceTokens.set(path, requestToken);
 
         new UPowerDeviceProxy(connection, UPOWER_BUS_NAME, path, (proxy, error) => {
             if (this._destroyed || generation !== this._upowerGeneration ||
-                !this._pendingDevicePaths.has(path))
+                this._pendingDeviceTokens.get(path) !== requestToken)
                 return;
 
-            this._pendingDevicePaths.delete(path);
+            this._pendingDeviceTokens.delete(path);
 
             if (error) {
                 global.logError(`${UUID}: failed to inspect UPower device ${path}: ${error.message}`);
@@ -208,7 +209,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         if (generation !== this._upowerGeneration)
             return;
 
-        this._pendingDevicePaths.delete(path);
+        this._pendingDeviceTokens.delete(path);
 
         const device = this._devices.get(path);
         if (device) {
@@ -221,7 +222,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
     }
 
     _refreshState() {
-        if (this._pendingDevicePaths.size > 0) {
+        if (this._pendingDeviceTokens.size > 0) {
             this._setState("checking");
             return;
         }
@@ -344,7 +345,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
         }
 
         this._devices.clear();
-        this._pendingDevicePaths.clear();
+        this._pendingDeviceTokens.clear();
     }
 
     on_applet_clicked() {
