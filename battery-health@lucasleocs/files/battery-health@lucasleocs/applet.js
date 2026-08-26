@@ -288,7 +288,8 @@ class BatteryHealthApplet extends Applet.IconApplet {
         const supportedState = state === "enabled" || state === "disabled" || state === "mixed";
 
         if (supportedState) {
-            this._toggleItem.setToggleState(state === "enabled");
+            if (!this._writeInProgress)
+                this._toggleItem.setToggleState(state === "enabled");
             this._toggleItem.setSensitive(!this._writeInProgress);
             this._toggleItem.actor.show();
         } else {
