@@ -491,6 +491,14 @@ class BatteryHealthApplet extends Applet.IconApplet {
 
         this._maximizeItem.setOrnament(PopupMenu.OrnamentType.DOT, state === "disabled");
         this._preserveItem.setOrnament(PopupMenu.OrnamentType.DOT, state === "enabled");
+
+        // Cinnamon 6.6 radio ornaments are reactive buttons. Keep them display-only
+        // so clicks are handled by the menu item, matching newer Cinnamon behavior.
+        if (this._maximizeItem._ornament && this._maximizeItem._ornament.child)
+            this._maximizeItem._ornament.child.reactive = false;
+        if (this._preserveItem._ornament && this._preserveItem._ornament.child)
+            this._preserveItem._ornament.child.reactive = false;
+
         this._maximizeItem.setSensitive(!this._writeInProgress);
         this._preserveItem.setSensitive(!this._writeInProgress);
         this._maximizeItem.actor.show();
