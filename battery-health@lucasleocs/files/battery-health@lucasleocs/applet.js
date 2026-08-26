@@ -132,6 +132,14 @@ class BatteryHealthApplet extends Applet.IconApplet {
 
         const generation = ++this._upowerGeneration;
 
+        // A new owner is a new UPower instance. Drop every proxy from the old one
+        // before creating replacements so failures cannot leave stale state active.
+        this._disconnectRootProxy();
+        this._clearDevices();
+        this._writeInProgress = false;
+        this._writeFailed = false;
+        this._setState("checking");
+
         new UPowerProxy(connection, UPOWER_BUS_NAME, UPOWER_OBJECT_PATH, (proxy, error) => {
             if (this._destroyed || generation !== this._upowerGeneration)
                 return;
@@ -142,10 +150,6 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 return;
             }
 
-            this._disconnectRootProxy();
-            this._clearDevices();
-            this._writeInProgress = false;
-            this._writeFailed = false;
             this._rootProxy = proxy;
 
             this._rootSignalIds.push(proxy.connectSignal(
