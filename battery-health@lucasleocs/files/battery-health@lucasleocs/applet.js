@@ -234,46 +234,54 @@ class BatteryHealthApplet extends Applet.IconApplet {
         if (this._destroyed || this._writeInProgress)
             return;
 
-        const supported = Array.from(this._devices.entries())
-            .filter(([_path, item]) => isChargeThresholdBattery(item.proxy));
+        const supportedPaths = Array.from(this._devices.entries())
+            .filter(([_path, item]) => isChargeThresholdBattery(item.proxy))
+            .map(([path]) => path);
 
-        if (supported.length === 0) {
+        if (supportedPaths.length === 0) {
             this._refreshState();
             return;
         }
 
         this._writeInProgress = true;
+        this._toggleItem.setStatus(_("Updating..."));
         this._toggleItem.setSensitive(false);
 
         const generation = this._upowerGeneration;
-        let remaining = supported.length;
+        let index = 0;
         let failed = false;
 
-        for (const [path, item] of supported) {
-            item.proxy.EnableChargeThresholdRemote(enabled, (_result, error) => {
-                if (this._destroyed || generation !== this._upowerGeneration)
-                    return;
+        const writeNext = () => {
+            if (this._destroyed || generation !== this._upowerGeneration)
+                return;
 
-                if (error) {
-                    failed = true;
-                    global.logError(`${UUID}: failed to change battery charge threshold for ${path}: ${error.message}`);
-                }
+            while (index < supportedPaths.length) {
+                const path = supportedPaths[index++];
+                const item = this._devices.get(path);
 
-                remaining--;
-                if (remaining !== 0 || this._destroyed)
-                    return;
+                if (!item || !isChargeThresholdBattery(item.proxy))
+                    continue;
 
-                this._writeInProgress = false;
-                this._refreshState();
+                item.proxy.EnableChargeThresholdRemote(enabled, (_result, error) => {
+                    if (this._destroyed || generation !== this._upowerGeneration)
+                        return;
 
-                if (failed) {
-                    const stillSupported = Array.from(this._devices.values(), item => item.proxy)
-                        .some(isChargeThresholdBattery);
-                    if (stillSupported)
-                        this._statusItem.label.set_text(_("Could not update all batteries."));
-                }
-            });
-        }
+                    if (error) {
+                        failed = true;
+                        global.logError(`${UUID}: failed to change battery charge threshold for ${path}: ${error.message}`);
+                    }
+
+                    writeNext();
+                });
+                return;
+            }
+
+            this._writeInProgress = false;
+            this._toggleItem.setStatus(failed ? _("Failed") : null);
+            this._refreshState();
+        };
+
+        writeNext();
     }
 
     _setState(state) {
@@ -284,6 +292,7 @@ class BatteryHealthApplet extends Applet.IconApplet {
             this._toggleItem.setSensitive(!this._writeInProgress);
             this._toggleItem.actor.show();
         } else {
+            this._toggleItem.setStatus(null);
             this._toggleItem.setSensitive(false);
             this._toggleItem.actor.hide();
         }
