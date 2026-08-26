@@ -53,15 +53,25 @@ const UPowerDeviceInterface = `<node>
 const UPowerProxy = Gio.DBusProxy.makeProxyWrapper(UPowerInterface);
 const UPowerDeviceProxy = Gio.DBusProxy.makeProxyWrapper(UPowerDeviceInterface);
 
-function isChargeThresholdBattery(device) {
+function isSystemBattery(device) {
     return device.Type === UPDeviceKind.BATTERY &&
         device.PowerSupply === true &&
-        device.IsPresent === true &&
-        device.ChargeThresholdSupported === true;
+        device.IsPresent === true;
+}
+
+function isChargeThresholdBattery(device) {
+    return isSystemBattery(device) && device.ChargeThresholdSupported === true;
 }
 
 function getThresholdState(devices) {
-    const supported = devices.filter(isChargeThresholdBattery);
+    const systemBatteries = devices.filter(isSystemBattery);
+
+    // Gio's D-Bus proxy returns null for declared properties that are absent from
+    // the remote interface. This distinguishes old UPower from supported=false.
+    if (systemBatteries.some(device => device.ChargeThresholdSupported == null))
+        return "api-unavailable";
+
+    const supported = systemBatteries.filter(isChargeThresholdBattery);
 
     if (supported.length === 0)
         return "unsupported";
@@ -373,6 +383,10 @@ class BatteryHealthApplet extends Applet.IconApplet {
             case "mixed":
                 this._statusItem.label.set_text(_("Batteries have different charging modes."));
                 this.set_applet_tooltip(_("Mixed battery charging modes"));
+                break;
+            case "api-unavailable":
+                this._statusItem.label.set_text(_("Battery charge limiting requires a newer version of UPower."));
+                this.set_applet_tooltip(_("Battery charge limiting is unavailable in this UPower version"));
                 break;
             case "unsupported":
                 this._statusItem.label.set_text(_("Battery charge limiting is not supported by this system."));
