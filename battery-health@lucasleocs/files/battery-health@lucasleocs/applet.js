@@ -9,6 +9,13 @@ const UUID = "battery-health@lucasleocs";
 const UPOWER_BUS_NAME = "org.freedesktop.UPower";
 const UPOWER_OBJECT_PATH = "/org/freedesktop/UPower";
 const { DeviceKind: UPDeviceKind } = UPowerGlib;
+const DEVICE_STATE_PROPERTIES = new Set([
+    "Type",
+    "PowerSupply",
+    "IsPresent",
+    "ChargeThresholdEnabled",
+    "ChargeThresholdSupported",
+]);
 
 Gettext.bindtextdomain(UUID, GLib.get_home_dir() + "/.local/share/locale");
 
@@ -208,7 +215,14 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 return;
             }
 
-            const signalId = proxy.connect("g-properties-changed", () => {
+            const signalId = proxy.connect("g-properties-changed", (_proxy, changed, invalidated) => {
+                const changedProperties = Object.keys(changed.deepUnpack());
+                const relevantChange = changedProperties.some(name => DEVICE_STATE_PROPERTIES.has(name)) ||
+                    (invalidated || []).some(name => DEVICE_STATE_PROPERTIES.has(name));
+
+                if (!relevantChange)
+                    return;
+
                 this._writeFailed = false;
                 this._refreshState();
             });
