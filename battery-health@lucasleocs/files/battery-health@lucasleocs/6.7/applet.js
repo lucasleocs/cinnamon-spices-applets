@@ -2,15 +2,13 @@ const Applet = imports.ui.applet;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const Gettext = imports.gettext;
-const St = imports.gi.St;
-const UPowerGlib = imports.gi.UPowerGlib;
-const Extension = imports.ui.extension;
+const PowerUtils = imports.misc.powerUtils;
 const PopupMenu = imports.ui.popupMenu;
 
 const UUID = "battery-health@lucasleocs";
 const UPOWER_BUS_NAME = "org.freedesktop.UPower";
 const UPOWER_OBJECT_PATH = "/org/freedesktop/UPower";
-const { DeviceKind: UPDeviceKind } = UPowerGlib;
+const { UPDeviceKind } = PowerUtils;
 
 const CHARGE_THRESHOLD_START = 1;
 const CHARGE_THRESHOLD_END = 2;
@@ -27,7 +25,7 @@ const DEVICE_STATE_PROPERTIES = new Set([
     "ChargeThresholdSettingsSupported",
 ]);
 
-Gettext.bindtextdomain(UUID, GLib.get_home_dir() + "/.local/share/locale");
+Gettext.bindtextdomain(UUID, GLib.get_user_data_dir() + "/locale");
 
 function _(text) {
     return Gettext.dgettext(UUID, text);
@@ -168,7 +166,6 @@ class BatteryHealthApplet extends Applet.IconApplet {
         super(orientation, panelHeight, instanceId);
 
         this.setAllowedLayout(Applet.AllowedLayout.BOTH);
-        this.metadata = metadata;
         this._destroyed = false;
         this._rootProxy = null;
         this._rootSignalIds = [];
@@ -207,14 +204,6 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._thresholdInfoItem = new PopupMenu.PopupMenuItem("", { reactive: false });
         this._thresholdInfoItem.actor.hide();
         this.menu.addMenuItem(this._thresholdInfoItem);
-
-        this._reloadItem = new PopupMenu.PopupIconMenuItem(
-            _("Reload Applet"),
-            "view-refresh-symbolic",
-            St.IconType.SYMBOLIC
-        );
-        this._reloadItem.connect("activate", () => this._reloadApplet());
-        this._applet_context_menu.addMenuItem(this._reloadItem);
 
         this._upowerWatchId = Gio.bus_watch_name(
             Gio.BusType.SYSTEM,
@@ -492,13 +481,6 @@ class BatteryHealthApplet extends Applet.IconApplet {
         this._maximizeItem.setOrnament(PopupMenu.OrnamentType.DOT, state === "disabled");
         this._preserveItem.setOrnament(PopupMenu.OrnamentType.DOT, state === "enabled");
 
-        // Cinnamon 6.6 radio ornaments are reactive buttons. Keep them display-only
-        // so clicks are handled by the menu item, matching newer Cinnamon behavior.
-        if (this._maximizeItem._ornament && this._maximizeItem._ornament.child)
-            this._maximizeItem._ornament.child.reactive = false;
-        if (this._preserveItem._ornament && this._preserveItem._ornament.child)
-            this._preserveItem._ornament.child.reactive = false;
-
         this._maximizeItem.setSensitive(!this._writeInProgress);
         this._preserveItem.setSensitive(!this._writeInProgress);
         this._maximizeItem.actor.show();
@@ -538,9 +520,9 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 break;
             case "api-unavailable":
                 this._statusItem.label.set_text(_(
-                    "This feature requires newer system power-management support.\nOn Linux Mint, it is intended for Mint 23 or newer."
+                    "Battery charge limiting is unavailable because the system power-management service does not expose the required charge-threshold API."
                 ));
-                this.set_applet_tooltip(_("Newer system power-management support is required"));
+                this.set_applet_tooltip(_("Charge-threshold API is unavailable"));
                 break;
             case "unsupported":
                 this._statusItem.label.set_text(_("Battery charge limiting is not supported by this system."));
@@ -555,16 +537,6 @@ class BatteryHealthApplet extends Applet.IconApplet {
         if (this._failedWriteTarget !== null &&
             (state === "enabled" || state === "disabled" || state === "mixed"))
             this._statusItem.label.set_text(_("Could not update all batteries."));
-    }
-
-    _reloadApplet() {
-        this.menu.close();
-
-        try {
-            Extension.reloadExtension(this.metadata.uuid, Extension.Type.APPLET);
-        } catch (error) {
-            global.logError(`${UUID}: failed to reload applet: ${error.message}`);
-        }
     }
 
     _disconnectRootProxy() {
