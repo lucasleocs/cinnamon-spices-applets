@@ -13,17 +13,19 @@ The applet does not use manufacturer-specific commands and does not write direct
 
 ## Linux Mint compatibility
 
-Battery Health is being developed for the power-management stack expected in **Linux Mint 23 and newer**.
+Battery Health is developed and supported for **Linux Mint running Cinnamon**. The current development baseline is **Cinnamon 6.7 or newer**.
 
-Linux Mint 22 uses an older UPower release that does not expose the standardized charge-threshold API required by this applet. The applet can load on Mint 22, but its charging controls remain unavailable.
+Linux Mint 22.x uses Cinnamon 6.6 and an older UPower release that does not expose the standardized charge-threshold API required by this applet. Mint 22.x is therefore outside the supported compatibility baseline, and the applet is packaged so Cinnamon treats versions older than 6.7 as incompatible.
+
+The 6.7 baseline is provisional during development and can be adjusted before the first Cinnamon Spices submission to match the stable Cinnamon release used by the first supported Linux Mint version.
 
 **Do not install UPower packages from a newer Linux Mint or Ubuntu release just to enable this feature.** Use the normal Linux Mint upgrade path instead.
 
-Support still depends on the laptop's kernel driver and firmware. If the system does not report charge-threshold support, Battery Health leaves the controls unavailable rather than guessing the manufacturer or forcing a hardware-specific method.
+Support still depends on the laptop's kernel driver and firmware. Even on a supported Cinnamon version, Battery Health checks UPower's reported capabilities at runtime. If the system does not report charge-threshold support, Battery Health leaves the controls unavailable rather than guessing the manufacturer or forcing a hardware-specific method.
 
-## Other Cinnamon distributions
+## Support scope
 
-Battery Health is a Cinnamon applet, not a Linux Mint-only application. It may also work on other Linux distributions running Cinnamon when their UPower version, kernel driver, and firmware provide the standardized charge-threshold interface.
+Other Linux distributions and other desktop environments are outside the project's supported compatibility matrix. Battery Health may happen to work on another distribution running Cinnamon, but that compatibility is incidental and is not a design, testing, or maintenance target.
 
 ## Why doesn't Preserve always show a percentage?
 
@@ -61,6 +63,6 @@ This is currently a proof of concept. The backend supports multiple system batte
 
 The applet has been exercised in Cinnamon with simulated modern UPower devices covering end-threshold-only, start-and-end, firmware-controlled, and mixed multi-battery configurations. Enable/disable calls, state updates, and selective writes to only the batteries that need changing have also been verified in those simulated scenarios.
 
-Linux Mint 22 / Cinnamon 6.6 compatibility has been checked separately: the applet loads safely on the older UPower stack and leaves charging controls unavailable rather than bypassing the system service.
+An earlier unversioned prototype was checked on Linux Mint 22 / Cinnamon 6.6 to confirm that the older UPower stack was handled safely. The current packaging intentionally places Cinnamon versions older than 6.7 outside the supported baseline instead of loading the applet there.
 
 Real-hardware testing with UPower 1.91.2/1.91.3, final UI review, and packaging assets are still pending before any Cinnamon Spices submission.

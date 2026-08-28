@@ -3,5 +3,7 @@
     "uuid": "battery-health@lucasleocs",
     "name": "Battery Health",
     "version": "0.1.0",
-    "max-instances": 1
+    "max-instances": 1,
+    "multiversion": true,
+    "cinnamon-version": ["6.7"]
 }
