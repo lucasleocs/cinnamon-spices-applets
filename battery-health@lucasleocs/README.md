@@ -47,7 +47,7 @@ Battery Health deliberately does not bypass UPower or write custom values direct
 
 Battery Health does not run `sudo`, does not install its own privileged helper, and does not write to `/sys` directly.
 
-Charging-mode changes are requested through UPower's D-Bus API. UPower and Polkit remain responsible for authorization and for applying the setting through the kernel. With UPower's upstream default policy, an active local desktop session is allowed to change the charging mode.
+Charging-mode changes are requested through UPower's D-Bus API. UPower and Polkit remain responsible for authorizing the request and applying the setting through the kernel.
 
 ## Technical note
 
