@@ -520,9 +520,9 @@ class BatteryHealthApplet extends Applet.IconApplet {
                 break;
             case "api-unavailable":
                 this._statusItem.label.set_text(_(
-                    "Battery charge limiting is unavailable because the system power-management service does not expose the required charge-threshold API."
+                    "Battery Health requires Linux Mint 23 or newer with UPower charge-threshold support."
                 ));
-                this.set_applet_tooltip(_("Charge-threshold API is unavailable"));
+                this.set_applet_tooltip(_("Linux Mint 23 or newer is required"));
                 break;
             case "unsupported":
                 this._statusItem.label.set_text(_("Battery charge limiting is not supported by this system."));
